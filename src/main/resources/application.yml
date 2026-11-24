@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: credito-rotativo
+  threads:
+    virtual:
+      enabled: true          # Java 21: threads virtuais para o servidor web (I/O concorrente sem tuning de pool)
+
+# Todo log de requisição leva o traceId (colocado no MDC pelo TraceIdFilter). "-" quando fora de uma requisição.
+logging:
+  pattern:
+    level: "%5p [traceId=%X{traceId:-}]"
+
+server:
+  shutdown: graceful          # termina requisições em andamento antes de encerrar (deploys sem perda)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true         # /actuator/health/liveness e /readiness para Kubernetes
+  metrics:
+    tags:
+      application: ${spring.application.name}   # rótulo comum em todas as métricas, para filtrar por serviço no Grafana
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+# Parâmetros de negócio. Alterar um limiar é mudança de configuração (e de versão), não de código.
+credit:
+  store:
+    max-entries: 10000        # armazenamento em memória: descarta as avaliações mais antigas acima desse limite
+  idempotency:
+    max-entries: 10000        # chaves Idempotency-Key lembradas em memória; acima disso descarta as mais antigas
+  policy:
+    version: "2026.11-v1"
+    min-score: 500
+    max-late-payments: 2
+    max-utilization: 0.85
+    min-history-months: 3
+    max-spending-spike-ratio: 2.0
+    min-available-limit: 500.00
+    spending-multiplier: 1.5
+    late-penalty-per-occurrence: 0.20
+    ceiling: 15000.00
+    score-bands:
+      - { min-score: 800, factor: 0.50 }
+      - { min-score: 700, factor: 0.35 }
+      - { min-score: 600, factor: 0.20 }
+      - { min-score: 0,   factor: 0.10 }

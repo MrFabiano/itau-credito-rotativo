@@ -1,0 +1,3 @@
+spring:
+  main:
+    web-application-type: none   # no perfil demo a aplicação roda o lote, imprime o relatório e encerra

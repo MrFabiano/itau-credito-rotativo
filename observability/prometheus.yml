@@ -1,0 +1,17 @@
+# Configuração mínima do Prometheus para coletar a aplicação e carregar as regras de alerta.
+# Uso local (com a aplicação rodando em localhost:8080):
+#   prometheus --config.file=observability/prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: credito-rotativo
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["localhost:8080"]
+
+# Em produção, as instâncias viriam de service discovery (Kubernetes) e os alertas seriam roteados pelo Alertmanager.

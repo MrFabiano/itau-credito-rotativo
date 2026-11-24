@@ -1,0 +1,76 @@
+{
+  "customers": [
+    {
+      "name": "Ana Souza (fictício)",
+      "cpf": "12345678909",
+      "creditScore": 820,
+      "currentInvoice": 1200.00,
+      "availableLimit": 8000.00,
+      "latePayments": 0,
+      "monthlySpending": [2800.00, 3000.00, 3100.00, 3200.00]
+    },
+    {
+      "name": "Bruno Lima (fictício)",
+      "cpf": "23456789173",
+      "creditScore": 710,
+      "currentInvoice": 2500.00,
+      "availableLimit": 6000.00,
+      "latePayments": 1,
+      "monthlySpending": [1800.00, 2000.00, 2100.00]
+    },
+    {
+      "name": "Carla Mendes (fictício)",
+      "cpf": "34567891228",
+      "creditScore": 430,
+      "currentInvoice": 900.00,
+      "availableLimit": 3000.00,
+      "latePayments": 4,
+      "monthlySpending": [1000.00, 1100.00, 900.00]
+    },
+    {
+      "name": "Diego Alves (fictício)",
+      "cpf": "45678912364",
+      "creditScore": 650,
+      "currentInvoice": 9500.00,
+      "availableLimit": 1000.00,
+      "latePayments": 0,
+      "monthlySpending": [3000.00, 3200.00, 3100.00]
+    },
+    {
+      "name": "Elisa Ramos (fictício)",
+      "cpf": "56789123482",
+      "creditScore": 760,
+      "currentInvoice": 800.00,
+      "availableLimit": 12000.00,
+      "latePayments": 2,
+      "monthlySpending": [2000.00, 2200.00, 2100.00, 2300.00, 2250.00]
+    },
+    {
+      "name": "Fábio Costa (fictício)",
+      "cpf": "67891234582",
+      "creditScore": 690,
+      "currentInvoice": 1500.00,
+      "availableLimit": 4000.00,
+      "latePayments": 0,
+      "monthlySpending": [1000.00, 1100.00, 4500.00]
+    },
+    {
+      "name": "Gabriela Nunes (fictício)",
+      "cpf": "78912345664",
+      "creditScore": 900,
+      "currentInvoice": 2000.00,
+      "availableLimit": 90000.00,
+      "latePayments": 0,
+      "monthlySpending": [9000.00, 9500.00, 9800.00, 10000.00, 10200.00, 10500.00]
+    },
+    {
+      "name": "Hugo Pereira (fictício)",
+      "cpf": "89123456728",
+      "creditScore": 580,
+      "currentInvoice": 300.00,
+      "availableLimit": 400.00,
+      "latePayments": 1,
+      "monthlySpending": [500.00, 450.00]
+    }
+  ]
+}

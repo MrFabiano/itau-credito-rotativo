@@ -1,0 +1,161 @@
+# Regras de gravação e de alerta do Crédito Rotativo.
+# Os nomes das métricas seguem a convenção do Micrometer e devem ser conferidos contra a saída real de
+# /actuator/prometheus (ver docs/observability.md, seção "Como verificar").
+groups:
+  # ---------------------------------------------------------------------------------------------------------------
+  # Regras de gravação: pré-calculam razões usadas pelos alertas e pelos painéis.
+  # ---------------------------------------------------------------------------------------------------------------
+  - name: credito-rotativo.recording
+    rules:
+      - record: credit:approval_ratio:rate15m
+        expr: |
+          sum(rate(credit_evaluations_total{decision="approved"}[15m]))
+          /
+          sum(rate(credit_evaluations_total[15m]))
+
+      - record: credit:approval_ratio:rate1d
+        expr: |
+          sum(rate(credit_evaluations_total{decision="approved"}[1d]))
+          /
+          sum(rate(credit_evaluations_total[1d]))
+
+      - record: credit:evaluations:per_minute
+        expr: sum(rate(credit_evaluations_total[1m])) * 60
+
+      # SLI de latência da decisão: fração das decisões concluídas em até 1 segundo.
+      - record: credit:decision_within_1s_ratio:rate5m
+        expr: |
+          sum(rate(credit_evaluation_duration_seconds_bucket{le="1.0"}[5m]))
+          /
+          sum(rate(credit_evaluation_duration_seconds_count[5m]))
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # Alertas. "page" = acordar alguém; "ticket" = tratar em horário comercial.
+  # ---------------------------------------------------------------------------------------------------------------
+  - name: credito-rotativo.alerts
+    rules:
+      - alert: CreditoRotativoInstanciaForaDoAr
+        expr: up{job="credito-rotativo"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "Instância {{ $labels.instance }} não responde ao scrape"
+          description: "O Prometheus não consegue coletar métricas. Verifique o processo e /actuator/health/liveness."
+
+      - alert: CreditoRotativoLatenciaHttpP99Alta
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(http_server_requests_seconds_bucket{method="POST", uri=~"/v1/credit-evaluations.*"}[5m]))
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "p99 do POST de avaliação acima de 800 ms"
+          description: "O requisito é decidir em até 1 segundo. p99 atual: {{ $value | humanizeDuration }}."
+
+      - alert: CreditoRotativoSloDeLatenciaDaDecisao
+        expr: credit:decision_within_1s_ratio:rate5m < 0.999
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Menos de 99,9% das decisões concluídas em até 1 segundo"
+          description: "SLO de latência violado: {{ $value | humanizePercentage }} das decisões em até 1s."
+
+      - alert: CreditoRotativoTaxaDeErro5xxAlta
+        expr: |
+          sum(rate(http_server_requests_seconds_count{status=~"5..", uri=~"/v1/.*"}[5m]))
+          /
+          sum(rate(http_server_requests_seconds_count{uri=~"/v1/.*"}[5m]))
+          > 0.01
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Mais de 1% das requisições da API respondem 5xx"
+          description: "Taxa de erro atual: {{ $value | humanizePercentage }}. Procure o traceId nos logs de erro."
+
+      # Alerta de NEGÓCIO: detecta regra mal configurada ou dado de entrada anômalo, mesmo sem nenhum erro técnico.
+      - alert: CreditoRotativoDesvioNaTaxaDeAprovacao
+        expr: |
+          abs(credit:approval_ratio:rate15m - credit:approval_ratio:rate1d) > 0.15
+          and on ()
+          (sum(increase(credit_evaluations_total[15m])) > 100)
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Taxa de aprovação dos últimos 15 min difere mais de 15 pontos percentuais da média do dia"
+          description: >
+            Aprovação 15m: {{ with query "credit:approval_ratio:rate15m" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            Verifique se uma regra ou política foi alterada (credit.policy.version) ou se o perfil dos clientes mudou.
+
+      - alert: CreditoRotativoUmaRegraBarrandoDemais
+        expr: |
+          sum by (rule) (rate(credit_rule_rejections_total[15m]))
+          /
+          scalar(sum(rate(credit_evaluations_total[15m])))
+          > 0.5
+          and on ()
+          (sum(increase(credit_evaluations_total[15m])) > 100)
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "A regra {{ $labels.rule }} reprova mais da metade das avaliações"
+          description: "Pode ser limiar mal calibrado ou dado de entrada incorreto. Compare com a versão anterior das regras."
+
+      - alert: CreditoRotativoFalhaAoPublicarEventos
+        expr: increase(credit_events_publish_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Eventos de avaliação não estão sendo publicados"
+          description: "As decisões continuam corretas, mas os sistemas downstream (antifraude, cobrança, auditoria) não foram avisados."
+
+      - alert: CreditoRotativoCapacidadeProximaDoPico
+        expr: credit:evaluations:per_minute > 8000
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Vazão acima de 80% do pico previsto (10.000 avaliações/min)"
+          description: "Vazão atual: {{ $value | humanize }} avaliações/min. Considere escalar réplicas."
+
+      - alert: CreditoRotativoMuitosRetriesDeClientes
+        expr: |
+          sum(rate(credit_idempotent_replays_total[5m]))
+          /
+          sum(rate(http_server_requests_seconds_count{method="POST", uri=~"/v1/credit-evaluations.*"}[5m]))
+          > 0.1
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Mais de 10% dos POSTs são retries com Idempotency-Key"
+          description: "Clientes estão repetindo chamadas, em geral por timeout. Investigue a latência e a rede."
+
+      - alert: CreditoRotativoMemoriaHeapAlta
+        expr: |
+          sum by (instance) (jvm_memory_used_bytes{area="heap"})
+          /
+          sum by (instance) (jvm_memory_max_bytes{area="heap"})
+          > 0.9
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Heap acima de 90% em {{ $labels.instance }}"
+          description: "O armazenamento em memória cresce até 10.000 avaliações. Revise credit.store.max-entries ou o tamanho do heap."
+
+      - alert: CreditoRotativoSemTrafego
+        expr: sum(increase(credit_evaluations_total[30m])) == 0
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Nenhuma avaliação nos últimos 30 minutos"
+          description: "Pode ser normal fora do horário; se não for, o canal de entrada pode estar com problema. Ajuste o horário no Alertmanager."
